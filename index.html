@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>WCR 3D Buildings</title>
+  <meta property="og:description" content="Use extrusions to display buildings' height in 3D." />
+  <meta charset='utf-8'>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel='stylesheet' href='https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.css' />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+  <script src='https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.js'></script>
+  <style>
+      body, html, #map {
+          height: 100%;
+          width: 100%;
+          margin: 0;
+          padding: 0;
+      }
+      .map-overlay {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          z-index: 1;
+          background: white;
+          padding: 10px;
+          border-radius: 3px;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+      }
+      .collapsed {
+          display: none;
+      }
+      #filterSelect {
+          width: 100%;
+          padding: 5px;
+          margin-top: 5px;
+      }
+      .layer-toggle {
+          margin-top: 5px;
+      }
+      .loading-spinner {
+          border: 8px solid #f3f3f3;
+          border-top: 8px solid #3498db;
+          border-radius: 50%;
+          width: 60px;
+          height: 60px;
+          animation: spin 2s linear infinite;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          z-index: 1000;
+      }
+      @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+      }
+      .home-button {
+          position: absolute;
+          top: 100px;
+          left: 10px;
+          z-index: 1;
+          background: white;
+          border: none;
+          padding: 10px;
+          border-radius: 3px;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+          cursor: pointer;
+      }
+      .draggable-marker-home {
+          position: absolute;
+          top: 150px;
+          left: 10px;
+          z-index: 1;
+          background: white;
+          border: none;
+          padding: 10px;
+          border-radius: 3px;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+          cursor: pointer;
+          font-size: 20px; /* Ensure the marker icon is large enough */
+      }
+      #hover-popup {
+          position: absolute;
+          background: white;
+          border-radius: 3px;
+          padding: 5px;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+          pointer-events: none;
+          display: none;
+          z-index: 10;
+      }
+      .legend {
+          background: white;
+          padding: 10px;
+          font-size: 12px;
+          border-radius: 3px;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+          position: absolute;
+          bottom: 30px;
+          right: 10px;
+          z-index: 1;
+      }
+      .legend-item {
+          display: flex;
+          align-items: center;
+          margin-bottom: 5px;
+      }
+      .legend-color {
+          width: 15px;
+          height: 15px;
+          margin-right: 5px;
+      }
+      .divider {
+          margin: 10px 0;
+          border-top: 1px solid #ccc;
+      }
+      .toggle-button {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          z-index: 2;
+          background: white;
+          border: none;
+          padding: 5px;
+          cursor: pointer;
+          border-radius: 3px;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+      }
+      .coordinates {
+          background: rgba(0, 0, 0, 0.7);
+          color: #fff;
+          position: absolute;
+          bottom: 40px;
+          left: 10px;
+          padding: 10px;
+          margin: 0;
+          font-size: 14px;
+          line-height: 20px;
+          border-radius: 5px;
+          display: none;
+      }
+      .coordinates a {
+          color: #fff;
+          text-decoration: underline;
+      }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<button class="toggle-button" id="toggleButton">▲</button>
+<div class="map-overlay" id="mapOverlay">
+  <div><strong>Basemaps</strong></div>
+  <label><input type="radio" name="basemap" value="osm" checked> OpenStreetMap</label><br>
+  <label><input type="radio" name="basemap" value="esri"> ESRI Satellite Imagery</label><br>
+  <div class="divider"></div>
+  <label><input type="checkbox" id="buildings-toggle" checked> Show 3D Buildings</label><br><br>
+  <label for="filterSelect">Filter by Company:</label>
+  <select id="filterSelect">
+    <option value="All">All</option>
+  </select><br>
+  <label class="layer-toggle"><input type="checkbox" id="ham-emitters-toggle" checked> Show Hamilton Emitters</label><br>
+  <label class="layer-toggle"><input type="checkbox" id="stations-toggle" checked> Show Stations</label>
+</div>
+<div class="loading-spinner" id="loading-spinner"></div>
+<button class="home-button" id="homeButton"><i class="fas fa-home"></i></button>
+<button class="draggable-marker-home" id="draggableMarkerHome"><i class="fas fa-map-marker-alt"></i></button>
+<div id="hover-popup"></div>
+<div class="legend">
+  <div class="legend-item"><div class="legend-color" style="background-color: blue;"></div>WCR</div>
+  <div class="legend-item"><div class="legend-color" style="background-color: red;"></div>EMRB</div>
+  <div class="legend-item"><div class="legend-color" style="background-color: orange;"></div>Industry|HAMN</div>
+</div>
+<pre id="coordinates" class="coordinates"></pre>
+
+<script>
+    const MAPTILER_KEY = 'u5NbqWtpP6uBHml4hWYU';
+    const initialCenter = [-79.804943, 43.263707];
+    const initialZoom = 13;
+    const pitchAngle = 45; // Initial pitch angle
+    const initialBearing = 16; // Initial bearing
+
+    const map = new maplibregl.Map({
+        container: 'map',
+        style: {
+            'version': 8,
+            'glyphs': 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+            'sources': {
+                'osm-tiles': {
+                    'type': 'raster',
+                    'tiles': ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                    'tileSize': 256,
+                    'minzoom': 0,
+                    'maxzoom': 19
+                },
+                'esri-tiles': {
+                    'type': 'raster',
+                    'tiles': ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+                    'tileSize': 256,
+                    'minzoom': 0,
+                    'maxzoom': 19
+                },
+                'ham-emitters': {
+                    'type': 'geojson',
+                    'data': 'https://raw.githubusercontent.com/sean-roelofsen/hamn_air/main/Ham_Emitters.geojson'
+                },
+                'openmaptiles': {
+                    'type': 'vector',
+                    'url': `https://api.maptiler.com/tiles/v3/tiles.json?key=${MAPTILER_KEY}`
+                },
+                'stations': {
+                    'type': 'geojson',
+                    'data': 'https://raw.githubusercontent.com/sean-roelofsen/hamn_air/main/WCR_All_Stations_2.geojson'
+                }
+            },
+            'layers': [
+                {
+                    'id': 'background',
+                    'type': 'background',
+                    'paint': {
+                        'background-color': '#e0dfdf'
+                    }
+                },
+                {
+                    'id': 'osm-tiles',
+                    'type': 'raster',
+                    'source': 'osm-tiles',
+                    'layout': {
+                        'visibility': 'visible'
+                    }
+                },
+                {
+                    'id': 'esri-tiles',
+                    'type': 'raster',
+                    'source': 'esri-tiles',
+                    'layout': {
+                        'visibility': 'none'
+                    }
+                },
+                {
+                    'id': 'ham-emitters',
+                    'type': 'fill',
+                    'source': 'ham-emitters',
+                    'paint': {
+                        'fill-color': [
+                            'case',
+                            ['boolean', ['feature-state', 'selected'], false],
+                            'rgba(255, 255, 0, 0.2)', // Yellow background for selected
+                            'rgba(255, 255, 255, 0.2)' // Default white background
+                        ],
+                        'fill-outline-color': 'rgba(255, 0, 0, 1)'
+                    }
+                },
+                {
+                    'id': 'ham-emitters-outline',
+                    'type': 'line',
+                    'source': 'ham-emitters',
+                    'paint': {
+                        'line-color': 'rgba(255, 0, 0, 1)',
+                        'line-width': 2 // Thicker outline
+                    }
+                },
+                {
+                    'id': 'ham-emitters-labels',
+                    'type': 'symbol',
+                    'source': 'ham-emitters',
+                    'layout': {
+                        'text-field': '{Company}',
+                        'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+                        'text-size': 14,
+                        'text-offset': [0, 0.6],
+                        'text-anchor': 'top'
+                    },
+                    'paint': {
+                        'text-color': 'black',
+                        'text-halo-color': 'white',
+                        'text-halo-width': 2
+                    }
+                },
+                {
+                    'id': 'fused-buildings',
+                    'type': 'fill-extrusion',
+                    'source': 'openmaptiles',
+                    'source-layer': 'building',
+                    'minzoom': 15,
+                    'paint': {
+                        'fill-extrusion-color': [
+                            'interpolate',
+                            ['linear'],
+                            ['get', 'render_height'], 0, 'lightgray', 200, 'royalblue', 400, 'lightblue'
+                        ],
+                        'fill-extrusion-height': [
+                            'interpolate',
+                            ['linear'],
+                            ['zoom'],
+                            15,
+                            0,
+                            16,
+                            ['get', 'render_height']
+                        ],
+                        'fill-extrusion-base': 0,
+                        'fill-extrusion-opacity': 0.6
+                    }
+                },
+                {
+                    'id': 'stations',
+                    'type': 'circle',
+                    'source': 'stations',
+                    'paint': {
+                        'circle-radius': 6,
+                        'circle-stroke-width': 2,
+                        'circle-color': [
+                            'match',
+                            ['get', 'DoneBy'],
+                            'WCR', 'blue',
+                            'EMRB', 'red',
+                            'Industry-SEM', 'orange',
+                            /* other */ '#ccc'
+                        ],
+                        'circle-stroke-color': 'white'
+                    }
+                },
+                {
+                    'id': 'stations-labels',
+                    'type': 'symbol',
+                    'source': 'stations',
+                    'layout': {
+                        'text-field': '{Station}',
+                        'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+                        'text-size': 16,
+                        'text-offset': [0, 0.5], // Adjust offset to be slightly below the circle marker
+                        'text-anchor': 'top'
+                    },
+                    'paint': {
+                        'text-color': 'black',
+                        'text-halo-color': 'white',
+                        'text-halo-width': 3
+                    }
+                }
+            ]
+        },
+        center: initialCenter,
+        zoom: initialZoom,
+        pitch: pitchAngle,
+        minPitch: 0,
+        maxPitch: 85,
+        bearing: initialBearing,
+        antialias: true
+    });
+
+    const basemapToggle = document.querySelectorAll('input[name="basemap"]');
+    const buildingsToggle = document.getElementById('buildings-toggle');
+    const hamEmittersToggle = document.getElementById('ham-emitters-toggle');
+    const stationsToggle = document.getElementById('stations-toggle');
+    const loadingSpinner = document.getElementById('loading-spinner');
+
+    const updateBasemap = () => {
+        const basemap = document.querySelector('input[name="basemap"]:checked').value;
+        map.setLayoutProperty('osm-tiles', 'visibility', basemap === 'osm' ? 'visible' : 'none');
+        map.setLayoutProperty('esri-tiles', 'visibility', basemap === 'esri' ? 'visible' : 'none');
+    };
+
+    basemapToggle.forEach(radio => {
+        radio.addEventListener('change', updateBasemap);
+    });
+
+    buildingsToggle.addEventListener('change', () => {
+        if (buildingsToggle.checked) {
+            map.setLayoutProperty('fused-buildings', 'visibility', 'visible');
+        } else {
+            map.setLayoutProperty('fused-buildings', 'visibility', 'none');
+        }
+    });
+
+    hamEmittersToggle.addEventListener('change', () => {
+        if (hamEmittersToggle.checked) {
+            map.setLayoutProperty('ham-emitters', 'visibility', 'visible');
+            map.setLayoutProperty('ham-emitters-outline', 'visibility', 'visible');
+            map.setLayoutProperty('ham-emitters-labels', 'visibility', 'visible');
+        } else {
+            map.setLayoutProperty('ham-emitters', 'visibility', 'none');
+            map.setLayoutProperty('ham-emitters-outline', 'visibility', 'none');
+            map.setLayoutProperty('ham-emitters-labels', 'visibility', 'none');
+        }
+    });
+
+    stationsToggle.addEventListener('change', () => {
+        const visibility = stationsToggle.checked ? 'visible' : 'none';
+        map.setLayoutProperty('stations', 'visibility', visibility);
+        map.setLayoutProperty('stations-labels', 'visibility', visibility);
+        map.setLayoutProperty('extruded-stations', 'visibility', visibility);
+    });
+
+    let marker; // Declare marker variable
+
+    map.on('load', () => {
+        console.log("Map loaded successfully.");
+
+        // Hide the loading spinner once the map has loaded
+        loadingSpinner.style.display = 'none';
+
+        // Initial visibility of buildings layer based on the checkbox
+        if (!buildingsToggle.checked) {
+            map.setLayoutProperty('fused-buildings', 'visibility', 'none');
+        }
+
+        // Initial visibility of ham-emitters layer based on the checkbox
+        if (!hamEmittersToggle.checked) {
+            map.setLayoutProperty('ham-emitters', 'visibility', 'none');
+            map.setLayoutProperty('ham-emitters-outline', 'visibility', 'none');
+            map.setLayoutProperty('ham-emitters-labels', 'visibility', 'none');
+        }
+
+        // Initial visibility of stations layer based on the checkbox
+        if (!stationsToggle.checked) {
+            map.setLayoutProperty('stations', 'visibility', 'none');
+            map.setLayoutProperty('stations-labels', 'visibility', 'none');
+        }
+
+        // Populate filter dropdown with unique company names
+        fetch('https://raw.githubusercontent.com/sean-roelofsen/hamn_air/main/Ham_Emitters.geojson')
+            .then(response => response.json())
+            .then(data => {
+                // Ensure each feature has a unique id
+                data.features.forEach((feature, index) => {
+                    feature.id = index;
+                });
+
+                // Add the GeoJSON source again with updated data
+                map.getSource('ham-emitters').setData(data);
+
+                const uniqueCompanies = [...new Set(data.features.map(feature => feature.properties.Company))];
+                const filterSelect = document.getElementById("filterSelect");
+                uniqueCompanies.forEach(company => {
+                    const option = document.createElement("option");
+                    option.value = company;
+                    option.text = company;
+                    filterSelect.appendChild(option);
+                });
+            });
+
+        // Add stations as extruded polygons
+        fetch('https://raw.githubusercontent.com/sean-roelofsen/hamn_air/main/WCR_All_Stations_2.geojson')
+            .then(response => response.json())
+            .then(data => {
+                // Convert point features to polygon features with a small size for extrusion
+                const polygonFeatures = data.features.map(feature => {
+                    const point = feature.geometry.coordinates;
+                    const size = 0.000005; // Size of the base of the extruded polygon (half of the previous size)
+                    const coordinates = [
+                        [point[0] - size, point[1] - size],
+                        [point[0] + size, point[1] - size],
+                        [point[0] + size, point[1] + size],
+                        [point[0] - size, point[1] + size],
+                        [point[0] - size, point[1] - size]
+                    ];
+                    return {
+                        type: 'Feature',
+                        geometry: {
+                            type: 'Polygon',
+                            coordinates: [coordinates]
+                        },
+                        properties: feature.properties
+                    };
+                });
+
+                const geojson = {
+                    type: 'FeatureCollection',
+                    features: polygonFeatures
+                };
+
+                map.addSource('extruded-stations', { type: 'geojson', data: geojson });
+
+                map.addLayer({
+                    'id': 'extruded-stations',
+                    'type': 'fill-extrusion',
+                    'source': 'extruded-stations',
+                    'paint': {
+                        'fill-extrusion-color': [
+                            'match',
+                            ['get', 'DoneBy'],
+                            'WCR', 'blue',
+                            'EMRB', 'red',
+                            'Industry-SEM', 'orange',
+                            /* other */ '#ccc'
+                        ],
+                        'fill-extrusion-height': 10, // 10 meters height
+                        'fill-extrusion-base': 0,
+                        'fill-extrusion-opacity': 0.8
+                    }
+                });
+            });
+    });
+
+    document.getElementById('draggableMarkerHome').addEventListener('click', () => {
+        if (marker) {
+            marker.remove();
+            marker = null;
+            document.getElementById('coordinates').style.display = 'none';
+        } else {
+            const center = map.getCenter(); // Get the current map center
+            marker = new maplibregl.Marker({ draggable: true })
+                .setLngLat(center)
+                .addTo(map);
+
+            marker.on('dragend', () => {
+                const lngLat = marker.getLngLat();
+                document.getElementById('coordinates').style.display = 'block';
+                document.getElementById('coordinates').innerHTML =
+                    `Longitude: ${lngLat.lng.toFixed(4)}<br />Latitude: ${lngLat.lat.toFixed(4)}<br /><a href="https://www.google.com/maps?layer=c&cbll=${lngLat.lat.toFixed(4)},${lngLat.lng.toFixed(4)}" target="_blank">Open in Google Street View</a>`;
+            });
+        }
+    });
+
+    document.getElementById('filterSelect').addEventListener('change', (event) => {
+        const selectedCompany = event.target.value;
+
+        if (selectedCompany === 'All') {
+            map.setFilter('ham-emitters', null);
+            map.setFilter('ham-emitters-labels', null);
+            map.removeFeatureState({ source: 'ham-emitters' });
+        } else {
+            const filter = ['==', ['get', 'Company'], selectedCompany];
+            map.setFilter('ham-emitters', filter);
+            map.setFilter('ham-emitters-labels', filter);
+
+            // Highlight the filtered selection with yellow background
+            const features = map.querySourceFeatures('ham-emitters', {
+                sourceLayer: 'ham-emitters',
+                filter: ['==', ['get', 'Company'], selectedCompany]
+            });
+
+            features.forEach((feature) => {
+                map.setFeatureState(
+                    { source: 'ham-emitters', id: feature.id },
+                    { selected: true }
+                );
+            });
+        }
+    });
+
+    // Add the navigation control to the map
+    var nav = new maplibregl.NavigationControl({
+        showCompass: true, // shows the compass button
+        showZoom: true     // shows the zoom buttons
+    });
+    map.addControl(nav, 'top-left'); // Adds the control to the top left corner
+
+    // Add the home button functionality
+    document.getElementById('homeButton').addEventListener('click', () => {
+        map.flyTo({
+            center: initialCenter,
+            zoom: initialZoom,
+            pitch: pitchAngle,
+            bearing: initialBearing // reset bearing to initial bearing for the home view
+        });
+    });
+
+    // Error handling for map load failure
+    map.on('error', (e) => {
+        console.error("An error occurred:", e.error);
+    });
+
+    // Add hover popup
+    const hoverPopup = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false
+    });
+
+    map.on('mouseenter', 'stations', (e) => {
+        map.getCanvas().style.cursor = 'pointer';
+
+        const coordinates = e.features[0].geometry.coordinates.slice();
+        const properties = e.features[0].properties;
+
+        let hoverContent = `<b>${properties.Station}</b>`;
+        const fields = ["Location", "City", "DoneBy", "HAMN", "DoneBy_2", "Continuous", "Continuous_2", "Non-Continuous", "Non-Continuous_2", "Meteorology", "url"];
+        fields.forEach(field => {
+            if (properties[field]) {
+                if (field === 'url') {
+                    hoverContent += `<br><b>Website:</b> <a href="${properties[field]}" target="_blank">website</a>`;
+                } else {
+                    hoverContent += `<br><b>${field}:</b> ${properties[field]}`;
+                }
+            }
+        });
+
+        hoverPopup.setLngLat(coordinates).setHTML(hoverContent).addTo(map);
+    });
+
+    map.on('mouseleave', 'stations', () => {
+        map.getCanvas().style.cursor = '';
+        hoverPopup.remove();
+    });
+
+    // Add click popup
+    map.on('click', 'stations', (e) => {
+        const coordinates = e.features[0].geometry.coordinates.slice();
+        const properties = e.features[0].properties;
+
+        let popupContent = `<b>${properties.Station}</b>`;
+        const fields = ["Location", "City", "DoneBy", "HAMN", "DoneBy_2", "Continuous", "Continuous_2", "Non-Continuous", "Non-Continuous_2", "Meteorology", "url"];
+        fields.forEach(field => {
+            if (properties[field]) {
+                if (field === 'url') {
+                    popupContent += `<br><b>Website:</b> <a href="${properties[field]}" target="_blank">website</a>`;
+                } else {
+                    popupContent += `<br><b>${field}:</b> ${properties[field]}`;
+                }
+            }
+        });
+
+        new maplibregl.Popup()
+            .setLngLat(coordinates)
+            .setHTML(popupContent)
+            .addTo(map);
+    });
+
+    // Listen for messages from the parent window
+    window.addEventListener('message', (event) => {
+        if (event.data.action === 'resize') {
+            // Resize the MapLibre map
+            map.resize();
+        }
+    });
+
+    // Toggle the map overlay visibility
+    document.getElementById('toggleButton').addEventListener('click', () => {
+        const overlay = document.getElementById('mapOverlay');
+        if (overlay.classList.contains('collapsed')) {
+            overlay.classList.remove('collapsed');
+            document.getElementById('toggleButton').textContent = '▲';
+        } else {
+            overlay.classList.add('collapsed');
+            document.getElementById('toggleButton').textContent = '▼';
+        }
+    });
+</script>
+</body>
+</html>
