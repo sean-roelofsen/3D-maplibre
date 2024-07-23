@@ -158,7 +158,7 @@
     <option value="All">All</option>
   </select><br>
   <label class="layer-toggle"><input type="checkbox" id="ham-emitters-toggle" checked> Show Hamilton Emitters</label><br>
-  <label class="layer-toggle"><input type="checkbox" id="stations-toggle" checked> Show Stations</label>
+  <label class="layer-toggle"><input type="checkbox" id="stations-toggle" checked> Show Stations</label><br>
   <label class="layer-toggle"><input type="checkbox" id="boundary-toggle"> Show HAAP Boundary</label>
 </div>
 <div class="loading-spinner" id="loading-spinner"></div>
@@ -351,6 +351,18 @@
                     'layout': {
                         'visibility': 'none' // Initially set to invisible
                     }
+                },
+                {
+                    'id': 'boundary-outline',
+                    'type': 'line',
+                    'source': 'boundary',
+                    'paint': {
+                        'line-color': 'rgba(255, 0, 255, 1)', // Magenta outline
+                        'line-width': 2 // Set the desired width for the outline
+                    },
+                    'layout': {
+                        'visibility': 'none' // Initially set to invisible
+                    }
                 }
             ]
         },
@@ -410,6 +422,7 @@
     boundaryToggle.addEventListener('change', () => {
         const visibility = boundaryToggle.checked ? 'visible' : 'none';
         map.setLayoutProperty('boundary', 'visibility', visibility);
+        map.setLayoutProperty('boundary-outline', 'visibility', visibility);
     });
 
     let marker; // Declare marker variable
@@ -436,6 +449,12 @@
         if (!stationsToggle.checked) {
             map.setLayoutProperty('stations', 'visibility', 'none');
             map.setLayoutProperty('stations-labels', 'visibility', 'none');
+        }
+
+        // Initial visibility of boundary layer based on the checkbox
+        if (!boundaryToggle.checked) {
+            map.setLayoutProperty('boundary', 'visibility', 'none');
+            map.setLayoutProperty('boundary-outline', 'visibility', 'none');
         }
 
         // Populate filter dropdown with unique company names
