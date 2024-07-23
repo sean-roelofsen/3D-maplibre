@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <title>WCR 3D Buildings</title>
+  <title>Display buildings in 3D with Draggable Marker</title>
   <meta property="og:description" content="Use extrusions to display buildings' height in 3D." />
   <meta charset='utf-8'>
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -159,6 +159,7 @@
   </select><br>
   <label class="layer-toggle"><input type="checkbox" id="ham-emitters-toggle" checked> Show Hamilton Emitters</label><br>
   <label class="layer-toggle"><input type="checkbox" id="stations-toggle" checked> Show Stations</label>
+  <label class="layer-toggle"><input type="checkbox" id="boundary-toggle"> Show HAAP Boundary</label>
 </div>
 <div class="loading-spinner" id="loading-spinner"></div>
 <button class="home-button" id="homeButton"><i class="fas fa-home"></i></button>
@@ -209,6 +210,10 @@
                 'stations': {
                     'type': 'geojson',
                     'data': 'https://raw.githubusercontent.com/sean-roelofsen/hamn_air/main/WCR_All_Stations_2.geojson'
+                },
+                'boundary': {
+                    'type': 'geojson',
+                    'data': 'https://raw.githubusercontent.com/sean-roelofsen/hamn_air/main/HAAP_Boundary_2.geojson'
                 }
             },
             'layers': [
@@ -334,6 +339,18 @@
                         'text-halo-color': 'white',
                         'text-halo-width': 3
                     }
+                },
+                {
+                    'id': 'boundary',
+                    'type': 'fill',
+                    'source': 'boundary',
+                    'paint': {
+                        'fill-color': 'rgba(255, 0, 255, 0.2)', // Magenta with 70% opacity
+                        'fill-outline-color': 'rgba(255, 0, 255, 1)' // Magenta outline
+                    },
+                    'layout': {
+                        'visibility': 'none' // Initially set to invisible
+                    }
                 }
             ]
         },
@@ -350,6 +367,7 @@
     const buildingsToggle = document.getElementById('buildings-toggle');
     const hamEmittersToggle = document.getElementById('ham-emitters-toggle');
     const stationsToggle = document.getElementById('stations-toggle');
+    const boundaryToggle = document.getElementById('boundary-toggle');
     const loadingSpinner = document.getElementById('loading-spinner');
 
     const updateBasemap = () => {
@@ -387,6 +405,11 @@
         map.setLayoutProperty('stations', 'visibility', visibility);
         map.setLayoutProperty('stations-labels', 'visibility', visibility);
         map.setLayoutProperty('extruded-stations', 'visibility', visibility);
+    });
+
+    boundaryToggle.addEventListener('change', () => {
+        const visibility = boundaryToggle.checked ? 'visible' : 'none';
+        map.setLayoutProperty('boundary', 'visibility', visibility);
     });
 
     let marker; // Declare marker variable
